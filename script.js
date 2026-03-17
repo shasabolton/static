@@ -7,7 +7,7 @@ const baseMass = 1;
 const baseCharge = 1;
 const coulombK = 5000;
 const softening = 20;
-const dt = 0.016;
+const maxDt = 0.05; // cap to avoid huge jumps when tab was inactive
 
 // State
 let particles = [];
@@ -63,7 +63,7 @@ function coulombForce(pi, pj) {
 }
 
 // Update: forces -> velocity -> position, torus wrap
-function update() {
+function update(dt) {
   for (let i = 0; i < particles.length; i++) {
     const p = particles[i];
     let fx = 0, fy = 0;
@@ -104,8 +104,12 @@ function draw() {
 }
 
 // Animation loop
-function loop() {
-  if (playing) update();
+let lastTime = 0;
+function loop(now) {
+  if (lastTime === 0) lastTime = now;
+  const dt = Math.min((now - lastTime) / 1000, maxDt);
+  lastTime = now;
+  if (playing) update(dt);
   draw();
   requestAnimationFrame(loop);
 }
@@ -125,7 +129,7 @@ function setup() {
     initParticles();
   });
 
-  loop();
+  requestAnimationFrame(loop);
 }
 
 setup();
