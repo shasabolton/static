@@ -53,12 +53,12 @@ function torusDist(ax, ay, bx, by) {
 }
 
 // Coulomb force on particle i from particle j
+// Like charges repel, opposite attract. Unit vector from j toward i = (-dx,-dy)/r
 function coulombForce(pi, pj) {
   const { dx, dy, r } = torusDist(pi.x, pi.y, pj.x, pj.y);
-  const r3 = r * r * r;
   const f = (coulombK * pi.charge * pj.charge) / (r * r);
-  const fx = (f * dx) / r;
-  const fy = (f * dy) / r;
+  const fx = -(f * dx) / r;
+  const fy = -(f * dy) / r;
   return { fx, fy };
 }
 
