@@ -1,7 +1,8 @@
 // Configuration
-const n = 10;
 const w = 500;
 const h = 500;
+const particleRadius = 4;
+const latticeSpacing = 8 * particleRadius;
 const positiveMassFactor = 2;
 const baseMass = 1;
 const baseCharge = 1;
@@ -11,34 +12,93 @@ const maxDt = 0.05; // cap to avoid huge jumps when tab was inactive
 
 // State
 let particles = [];
+let rigidBodies = [];
 let playing = true;
 let canvas, ctx;
 
-// Initialize particles: even spread, equal +/- , positive heavier
+// Create a lattice rigid body. lw, lh = width/height in particles (e.g. 2x2 = 4 particles)
+function createLatticeBody(lw, lh, charge, centerX, centerY) {
+  const massPerParticle = charge > 0 ? baseMass * positiveMassFactor : baseMass;
+  const body = {
+    centerX, centerY,
+    vx: 0, vy: 0,
+    angle: 0,
+    angularVelocity: 0,
+    mass: 0,
+    I: 0,
+    particles: []
+  };
+
+  let totalMass = 0;
+  let totalI = 0;
+
+  for (let j = 0; j < lh; j++) {
+    for (let i = 0; i < lw; i++) {
+      const localX = (i - (lw - 1) / 2) * latticeSpacing;
+      const localY = (j - (lh - 1) / 2) * latticeSpacing;
+      const p = {
+        x: centerX + localX,
+        y: centerY + localY,
+        vx: 0, vy: 0,
+        mass: massPerParticle,
+        charge,
+        radius: particleRadius,
+        body,
+        localX, localY
+      };
+      body.particles.push(p);
+      particles.push(p);
+      totalMass += massPerParticle;
+      totalI += massPerParticle * (localX * localX + localY * localY);
+    }
+  }
+  body.mass = totalMass;
+  body.I = totalI;
+  body.particles.forEach(p => { p.body = body; });
+
+  rigidBodies.push(body);
+  return body;
+}
+
+// Update particle position/velocity from rigid body state
+function syncLatticeParticles(body) {
+  const cos = Math.cos(body.angle);
+  const sin = Math.sin(body.angle);
+  for (const p of body.particles) {
+    const rx = cos * p.localX - sin * p.localY;
+    const ry = sin * p.localX + cos * p.localY;
+    p.x = body.centerX + rx;
+    p.y = body.centerY + ry;
+    p.vx = body.vx - body.angularVelocity * ry;
+    p.vy = body.vy + body.angularVelocity * rx;
+  }
+}
+
+// Initialize: two 2x2 positive lattices, 8 free negative particles
 function initParticles() {
   particles = [];
-  const cols = Math.ceil(Math.sqrt(n));
-  const rows = Math.ceil(n / cols);
-  const cellW = w / cols;
-  const cellH = h / rows;
-  const halfPos = n / 2;
+  rigidBodies = [];
 
-  for (let i = 0; i < n; i++) {
+  createLatticeBody(2, 2, baseCharge, 150, 250);
+  createLatticeBody(2, 2, baseCharge, 350, 250);
+
+  // 8 free negative particles, even spread
+  const cols = 4, rows = 2;
+  const cellW = w / cols, cellH = h / rows;
+  for (let i = 0; i < 8; i++) {
     const col = i % cols;
     const row = Math.floor(i / cols);
-    const x = (col + 0.5) * cellW;
-    const y = (row + 0.5) * cellH;
-    const charge = i < halfPos ? baseCharge : -baseCharge;
-    const mass = charge > 0 ? baseMass * positiveMassFactor : baseMass;
-
     particles.push({
-      x, y,
+      x: (col + 0.5) * cellW,
+      y: (row + 0.5) * cellH,
       vx: 0, vy: 0,
-      mass,
-      charge,
-      radius: 4
+      mass: baseMass,
+      charge: -baseCharge,
+      radius: particleRadius
     });
   }
+
+  rigidBodies.forEach(syncLatticeParticles);
 }
 
 // Torus distance (shortest path wraps around)
@@ -53,7 +113,6 @@ function torusDist(ax, ay, bx, by) {
 }
 
 // Coulomb force on particle i from particle j
-// Like charges repel, opposite attract. Unit vector from j toward i = (-dx,-dy)/r
 function coulombForce(pi, pj) {
   const { dx, dy, r } = torusDist(pi.x, pi.y, pj.x, pj.y);
   const f = (coulombK * pi.charge * pj.charge) / (r * r);
@@ -64,29 +123,65 @@ function coulombForce(pi, pj) {
 
 // Update: forces -> velocity -> position, torus wrap
 function update(dt) {
-  for (let i = 0; i < particles.length; i++) {
-    const p = particles[i];
+  // Compute force on each particle
+  const forces = particles.map(pi => {
     let fx = 0, fy = 0;
-
     for (let j = 0; j < particles.length; j++) {
-      if (i === j) continue;
-      const f = coulombForce(p, particles[j]);
+      if (pi === particles[j]) continue;
+      const f = coulombForce(pi, particles[j]);
       fx += f.fx;
       fy += f.fy;
     }
+    return { fx, fy };
+  });
 
-    const ax = fx / p.mass;
-    const ay = fy / p.mass;
-    p.vx += ax * dt;
-    p.vy += ay * dt;
+  // Update free particles
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    if (p.body) continue; // lattice particles handled by rigid body
+
+    const { fx, fy } = forces[i];
+    p.vx += (fx / p.mass) * dt;
+    p.vy += (fy / p.mass) * dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
 
-    // Torus boundary
     if (p.x < 0) p.x += w;
     if (p.x >= w) p.x -= w;
     if (p.y < 0) p.y += h;
     if (p.y >= h) p.y -= h;
+  }
+
+  // Update rigid bodies: sum F and torque, integrate, sync particles
+  for (const body of rigidBodies) {
+    let fx = 0, fy = 0;
+    let torque = 0;
+
+    for (let i = 0; i < particles.length; i++) {
+      if (particles[i].body !== body) continue;
+      const f = forces[i];
+      fx += f.fx;
+      fy += f.fy;
+      const cos = Math.cos(body.angle);
+      const sin = Math.sin(body.angle);
+      const rx = cos * particles[i].localX - sin * particles[i].localY;
+      const ry = sin * particles[i].localX + cos * particles[i].localY;
+      torque += rx * f.fy - ry * f.fx;
+    }
+
+    body.vx += (fx / body.mass) * dt;
+    body.vy += (fy / body.mass) * dt;
+    body.angularVelocity += (torque / body.I) * dt;
+    body.centerX += body.vx * dt;
+    body.centerY += body.vy * dt;
+    body.angle += body.angularVelocity * dt;
+
+    if (body.centerX < 0) body.centerX += w;
+    if (body.centerX >= w) body.centerX -= w;
+    if (body.centerY < 0) body.centerY += h;
+    if (body.centerY >= h) body.centerY -= h;
+
+    syncLatticeParticles(body);
   }
 }
 
