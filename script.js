@@ -98,6 +98,10 @@ function placeMaterial(ci, cj, material) {
 
   if (prev === material) return;
 
+  if ((material === 'copper' || material === 'free_copper') && (prev === 'copper' || prev === 'free_copper')) {
+    return;
+  }
+
   if (prev === 'copper' || prev === 'free_copper') {
     protons = protons.filter(p => !(p.cellI === ci && p.cellJ === cj));
     electrons = electrons.filter(e => !(e.cellI === ci && e.cellJ === cj));
@@ -386,6 +390,87 @@ function bodyOverlapsInsulator(body) {
   return false;
 }
 
+function getBodyAABB(body) {
+  let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+  for (const cell of body.cells) {
+    const l = body.centerX + cell.offsetX;
+    const t = body.centerY + cell.offsetY;
+    left = Math.min(left, l);
+    right = Math.max(right, l + cellW);
+    top = Math.min(top, t);
+    bottom = Math.max(bottom, t + cellH);
+  }
+  return { left, right, top, bottom };
+}
+
+function rectsOverlap(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+function getCopperOverlap(body) {
+  const bodyBox = getBodyAABB(body);
+  let bestPush = null;
+  let bestLen = 0;
+  for (const cell of body.cells) {
+    const left = body.centerX + cell.offsetX;
+    const top = body.centerY + cell.offsetY;
+    const ci0 = Math.max(0, Math.floor(left / cellW));
+    const ci1 = Math.min(gridSize - 1, Math.floor((left + cellW - 1) / cellW));
+    const cj0 = Math.max(0, Math.floor(top / cellH));
+    const cj1 = Math.min(gridSize - 1, Math.floor((top + cellH - 1) / cellH));
+    for (let gi = ci0; gi <= ci1; gi++) {
+      for (let gj = cj0; gj <= cj1; gj++) {
+        if (!isCopperAtGrid(gi, gj)) continue;
+        const cellBox = { left: gi * cellW, right: (gi + 1) * cellW, top: gj * cellH, bottom: (gj + 1) * cellH };
+        if (!rectsOverlap(bodyBox, cellBox)) continue;
+        const overlapX = Math.min(bodyBox.right - cellBox.left, cellBox.right - bodyBox.left);
+        const overlapY = Math.min(bodyBox.bottom - cellBox.top, cellBox.bottom - bodyBox.top);
+        const cellCx = (gi + 0.5) * cellW;
+        const cellCy = (gj + 0.5) * cellH;
+        const bodyCx = (bodyBox.left + bodyBox.right) / 2;
+        const bodyCy = (bodyBox.top + bodyBox.bottom) / 2;
+        const dx = bodyCx - cellCx;
+        const dy = bodyCy - cellCy;
+        let pushX = 0, pushY = 0;
+        if (overlapX < overlapY) {
+          pushX = dx > 0 ? overlapX : -overlapX;
+        } else {
+          pushY = dy > 0 ? overlapY : -overlapY;
+        }
+        const len = Math.sqrt(pushX * pushX + pushY * pushY);
+        if (len > bestLen) {
+          bestLen = len;
+          bestPush = { pushX, pushY };
+        }
+      }
+    }
+  }
+  return bestPush;
+}
+
+function getBodyBodyOverlap(bodyA, bodyB) {
+  const a = getBodyAABB(bodyA);
+  const b = getBodyAABB(bodyB);
+  if (!rectsOverlap(a, b)) return null;
+  const overlapX = Math.min(a.right - b.left, b.right - a.left);
+  const overlapY = Math.min(a.bottom - b.top, b.bottom - a.top);
+  const acx = (a.left + a.right) / 2;
+  const acy = (a.top + a.bottom) / 2;
+  const bcx = (b.left + b.right) / 2;
+  const bcy = (b.top + b.bottom) / 2;
+  const dx = acx - bcx;
+  const dy = acy - bcy;
+  let pushAX = 0, pushAY = 0;
+  if (overlapX < overlapY) {
+    pushAX = dx > 0 ? overlapX / 2 : -overlapX / 2;
+    pushAY = 0;
+  } else {
+    pushAX = 0;
+    pushAY = dy > 0 ? overlapY / 2 : -overlapY / 2;
+  }
+  return { pushAX, pushAY, pushBX: -pushAX, pushBY: -pushAY };
+}
+
 function update(dt) {
   if (!playing) return;
 
@@ -441,16 +526,14 @@ function update(dt) {
       }
     }
 
-    const prevX = body.centerX;
-    const prevY = body.centerY;
     body.vx += (fx / body.mass) * dt;
     body.vy += (fy / body.mass) * dt;
     body.centerX += body.vx * dt;
     body.centerY += body.vy * dt;
 
     if (bodyOverlapsInsulator(body)) {
-      body.centerX = prevX;
-      body.centerY = prevY;
+      body.centerX -= body.vx * dt;
+      body.centerY -= body.vy * dt;
       body.vx = -body.vx;
       body.vy = -body.vy;
     }
@@ -464,6 +547,67 @@ function update(dt) {
       p.x = body.centerX + p.offsetX;
       p.y = body.centerY + p.offsetY;
     }
+  }
+
+  for (let iter = 0; iter < 5; iter++) {
+    let anyOverlap = false;
+    for (const body of freeBodies) {
+      const copperPush = getCopperOverlap(body);
+      if (copperPush) {
+        body.centerX += copperPush.pushX;
+        body.centerY += copperPush.pushY;
+        const len = Math.sqrt(copperPush.pushX * copperPush.pushX + copperPush.pushY * copperPush.pushY);
+        if (len > 0.001) {
+          const nx = copperPush.pushX / len;
+          const ny = copperPush.pushY / len;
+          const vn = body.vx * nx + body.vy * ny;
+          if (vn < 0) {
+            body.vx -= vn * nx;
+            body.vy -= vn * ny;
+          }
+        }
+        for (const p of body.protons) {
+          p.x = body.centerX + p.offsetX;
+          p.y = body.centerY + p.offsetY;
+        }
+        anyOverlap = true;
+      }
+      for (const other of freeBodies) {
+        if (body === other) continue;
+        const overlap = getBodyBodyOverlap(body, other);
+        if (overlap) {
+          body.centerX += overlap.pushAX;
+          body.centerY += overlap.pushAY;
+          other.centerX += overlap.pushBX;
+          other.centerY += overlap.pushBY;
+          const len = Math.sqrt(overlap.pushAX * overlap.pushAX + overlap.pushAY * overlap.pushAY);
+          if (len > 0.001) {
+            const nx = overlap.pushAX / len;
+            const ny = overlap.pushAY / len;
+            const vnA = body.vx * nx + body.vy * ny;
+            const vnB = other.vx * nx + other.vy * ny;
+            const relV = vnA - vnB;
+            if (relV < 0) {
+              const totalM = body.mass + other.mass;
+              body.vx -= (relV * other.mass / totalM) * nx;
+              body.vy -= (relV * other.mass / totalM) * ny;
+              other.vx += (relV * body.mass / totalM) * nx;
+              other.vy += (relV * body.mass / totalM) * ny;
+            }
+          }
+          for (const p of body.protons) {
+            p.x = body.centerX + p.offsetX;
+            p.y = body.centerY + p.offsetY;
+          }
+          for (const p of other.protons) {
+            p.x = other.centerX + p.offsetX;
+            p.y = other.centerY + p.offsetY;
+          }
+          anyOverlap = true;
+        }
+      }
+    }
+    if (!anyOverlap) break;
   }
 }
 
