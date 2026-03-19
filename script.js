@@ -6,9 +6,9 @@ const cellW = w / gridSize;
 const cellH = h / gridSize;
 const particleRadius = 4;
 const electronCharge = -1;
-const protonCharge = 4;
+const protonCharge = 1;
 const electronMass = 1;
-const protonMass = 2;
+const protonMass = 1;
 const coulombK = 5000;
 const softening = 20;
 const maxDt = 0.05;
@@ -76,16 +76,14 @@ function isCopperOrFreeCopper(ci, cj) {
 function addElectronsToCell(ci, cj) {
   if (!isCopperOrFreeCopper(ci, cj)) return;
   const margin = particleRadius * 2;
-  for (let k = 0; k < 4; k++) {
-    const ex = ci * cellW + margin + Math.random() * (cellW - 2 * margin);
-    const ey = cj * cellH + margin + Math.random() * (cellH - 2 * margin);
-    electrons.push({
-      x: ex, y: ey, vx: 0, vy: 0,
-      charge: electronCharge, mass: electronMass,
-      cellI: ci, cellJ: cj, radius: particleRadius,
-      body: null
-    });
-  }
+  const ex = ci * cellW + margin + Math.random() * (cellW - 2 * margin);
+  const ey = cj * cellH + margin + Math.random() * (cellH - 2 * margin);
+  electrons.push({
+    x: ex, y: ey, vx: 0, vy: 0,
+    charge: electronCharge, mass: electronMass,
+    cellI: ci, cellJ: cj, radius: particleRadius,
+    body: null
+  });
 }
 
 function placeMaterial(ci, cj, material) {
@@ -117,16 +115,14 @@ function placeMaterial(ci, cj, material) {
       cellI: ci, cellJ: cj, fixed: material === 'copper'
     });
     const margin = particleRadius * 2;
-    for (let k = 0; k < 4; k++) {
-      const ex = ci * cellW + margin + Math.random() * (cellW - 2 * margin);
-      const ey = cj * cellH + margin + Math.random() * (cellH - 2 * margin);
-      electrons.push({
-        x: ex, y: ey, vx: 0, vy: 0,
-        charge: electronCharge, mass: electronMass,
-        cellI: ci, cellJ: cj, radius: particleRadius,
-        body: null
-      });
-    }
+    const ex = ci * cellW + margin + Math.random() * (cellW - 2 * margin);
+    const ey = cj * cellH + margin + Math.random() * (cellH - 2 * margin);
+    electrons.push({
+      x: ex, y: ey, vx: 0, vy: 0,
+      charge: electronCharge, mass: electronMass,
+      cellI: ci, cellJ: cj, radius: particleRadius,
+      body: null
+    });
   }
 }
 
