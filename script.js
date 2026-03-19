@@ -216,11 +216,14 @@ function findFreeCopperBodies() {
 }
 
 function coulombForce(ax, ay, aq, bx, by, bq) {
-  let dx = bx - ax;
-  let dy = by - ay;
-  const r = Math.sqrt(dx * dx + dy * dy + softening * softening);
-  const f = (coulombK * aq * bq) / (r * r);
-  return { fx: -(f * dx) / r, fy: -(f * dy) / r };
+  const dx = bx - ax;
+  const dy = by - ay;
+  const rActualSq = dx * dx + dy * dy;
+  const rSoftSq = rActualSq + softening * softening;
+  const f = (coulombK * aq * bq) / rSoftSq;
+  if (rActualSq < 1e-10) return { fx: 0, fy: 0 };
+  const rDir = Math.sqrt(rActualSq);
+  return { fx: -(f * dx) / rDir, fy: -(f * dy) / rDir };
 }
 
 function handleElectronBoundary(e) {
