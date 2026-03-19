@@ -235,44 +235,41 @@ function handleElectronBoundary(e) {
   const bottom = (e.cellJ + 1) * cellH;
   const margin = particleRadius;
 
+  const r = e.radius || particleRadius;
   if (e.x < left + margin) {
     if (isCopperAtGrid(e.cellI - 1, e.cellJ)) {
       e.cellI--;
-    } else if (getBodyAtPoint(left - 1, e.y)) {
-      transferElectronToBody(e, getBodyAtPoint(left - 1, e.y));
     } else {
-      e.x = left + margin + (left + margin - e.x);
-      e.vx = -e.vx;
+      const hit = getBodyAtPoint(left - 1, e.y) || getBodyAtPoint(e.x - r, e.y);
+      if (hit) transferElectronToBody(e, hit);
+      else { e.x = left + margin + (left + margin - e.x); e.vx = -e.vx; }
     }
   }
   if (e.x > right - margin) {
     if (isCopperAtGrid(e.cellI + 1, e.cellJ)) {
       e.cellI++;
-    } else if (getBodyAtPoint(right + 1, e.y)) {
-      transferElectronToBody(e, getBodyAtPoint(right + 1, e.y));
     } else {
-      e.x = right - margin - (e.x - (right - margin));
-      e.vx = -e.vx;
+      const hit = getBodyAtPoint(right + 1, e.y) || getBodyAtPoint(e.x + r, e.y);
+      if (hit) transferElectronToBody(e, hit);
+      else { e.x = right - margin - (e.x - (right - margin)); e.vx = -e.vx; }
     }
   }
   if (e.y < top + margin) {
     if (isCopperAtGrid(e.cellI, e.cellJ - 1)) {
       e.cellJ--;
-    } else if (getBodyAtPoint(e.x, top - 1)) {
-      transferElectronToBody(e, getBodyAtPoint(e.x, top - 1));
     } else {
-      e.y = top + margin + (top + margin - e.y);
-      e.vy = -e.vy;
+      const hit = getBodyAtPoint(e.x, top - 1) || getBodyAtPoint(e.x, e.y - r);
+      if (hit) transferElectronToBody(e, hit);
+      else { e.y = top + margin + (top + margin - e.y); e.vy = -e.vy; }
     }
   }
   if (e.y > bottom - margin) {
     if (isCopperAtGrid(e.cellI, e.cellJ + 1)) {
       e.cellJ++;
-    } else if (getBodyAtPoint(e.x, bottom + 1)) {
-      transferElectronToBody(e, getBodyAtPoint(e.x, bottom + 1));
     } else {
-      e.y = bottom - margin - (e.y - (bottom - margin));
-      e.vy = -e.vy;
+      const hit = getBodyAtPoint(e.x, bottom + 1) || getBodyAtPoint(e.x, e.y + r);
+      if (hit) transferElectronToBody(e, hit);
+      else { e.y = bottom - margin - (e.y - (bottom - margin)); e.vy = -e.vy; }
     }
   }
 }
@@ -292,6 +289,28 @@ function transferElectronToBody(e, hit) {
 function handleBodyElectronBoundary(e) {
   const body = e.body;
   const margin = particleRadius;
+  const r = e.radius || particleRadius;
+
+  const ci = Math.floor(e.x / cellW);
+  const cj = Math.floor(e.y / cellH);
+  if (ci >= 0 && ci < gridSize && cj >= 0 && cj < gridSize && isCopperAtGrid(ci, cj)) {
+    transferElectronToFixed(e, ci, cj);
+    return;
+  }
+  const ciL = Math.max(0, Math.floor((e.x - r) / cellW));
+  const ciR = Math.min(gridSize - 1, Math.floor((e.x + r) / cellW));
+  const cjT = Math.max(0, Math.floor((e.y - r) / cellH));
+  const cjB = Math.min(gridSize - 1, Math.floor((e.y + r) / cellH));
+  for (let gi = ciL; gi <= ciR; gi++) {
+    for (let gj = cjT; gj <= cjB; gj++) {
+      if (!isCopperAtGrid(gi, gj)) continue;
+      const cellBox = { left: gi * cellW, right: (gi + 1) * cellW, top: gj * cellH, bottom: (gj + 1) * cellH };
+      const bodyBox = getBodyAABB(body);
+      if (rectsOverlap(bodyBox, cellBox)) continue;
+      transferElectronToFixed(e, gi, gj);
+      return;
+    }
+  }
 
   let bodyLeft = Infinity, bodyRight = -Infinity, bodyTop = Infinity, bodyBottom = -Infinity;
   for (const cell of body.cells) {
@@ -403,6 +422,8 @@ function rectsOverlap(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 }
 
+const electronOverlapAllowance = particleRadius * 2;
+
 function getCopperOverlap(body) {
   const bodyBox = getBodyAABB(body);
   let bestPush = null;
@@ -428,10 +449,12 @@ function getCopperOverlap(body) {
         const dx = bodyCx - cellCx;
         const dy = bodyCy - cellCy;
         let pushX = 0, pushY = 0;
+        const pushAmountX = Math.max(0, overlapX - electronOverlapAllowance);
+        const pushAmountY = Math.max(0, overlapY - electronOverlapAllowance);
         if (overlapX < overlapY) {
-          pushX = dx > 0 ? overlapX : -overlapX;
+          pushX = dx > 0 ? pushAmountX : -pushAmountX;
         } else {
-          pushY = dy > 0 ? overlapY : -overlapY;
+          pushY = dy > 0 ? pushAmountY : -pushAmountY;
         }
         const len = Math.sqrt(pushX * pushX + pushY * pushY);
         if (len > bestLen) {
