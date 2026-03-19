@@ -19,7 +19,7 @@ let protons = [];
 let electrons = [];
 let playing = false;
 let canvas, ctx;
-let selectedMaterial = 'copper';
+let selectedMaterial = 'air';
 
 // Cell types: 'copper' | 'insulator' | 'air'
 function initGrid() {
@@ -47,9 +47,33 @@ function isCopper(ci, cj) {
   return c === 'copper';
 }
 
+// Add 4 electrons to a copper cell
+function addElectronsToCell(ci, cj) {
+  if (!isCopper(ci, cj)) return;
+  const margin = particleRadius * 2;
+  for (let k = 0; k < 4; k++) {
+    const ex = ci * cellW + margin + Math.random() * (cellW - 2 * margin);
+    const ey = cj * cellH + margin + Math.random() * (cellH - 2 * margin);
+    electrons.push({
+      x: ex, y: ey,
+      vx: 0, vy: 0,
+      charge: electronCharge,
+      mass: electronMass,
+      cellI: ci, cellJ: cj,
+      radius: particleRadius
+    });
+  }
+}
+
 // Place material at cell, update particles
 function placeMaterial(ci, cj, material) {
   const prev = grid[cj][ci];
+
+  if (material === 'electron') {
+    addElectronsToCell(ci, cj);
+    return;
+  }
+
   if (prev === material) return;
 
   // Remove particles from this cell if it was copper
@@ -98,6 +122,7 @@ function coulombForce(ax, ay, aq, bx, by, bq) {
 }
 
 // Bounce electron off wall or allow through to adjacent copper
+// When crossing into copper: only update cell ref, position stays (smooth movement)
 function handleElectronBoundary(e) {
   const left = e.cellI * cellW;
   const right = (e.cellI + 1) * cellW;
@@ -109,7 +134,6 @@ function handleElectronBoundary(e) {
   if (e.x < left + margin) {
     if (isCopper(e.cellI - 1, e.cellJ)) {
       e.cellI--;
-      e.x = left - margin - (left + margin - e.x);
     } else {
       e.x = left + margin + (left + margin - e.x);
       e.vx = -e.vx;
@@ -119,7 +143,6 @@ function handleElectronBoundary(e) {
   if (e.x > right - margin) {
     if (isCopper(e.cellI + 1, e.cellJ)) {
       e.cellI++;
-      e.x = right + margin + (e.x - (right - margin));
     } else {
       e.x = right - margin - (e.x - (right - margin));
       e.vx = -e.vx;
@@ -129,7 +152,6 @@ function handleElectronBoundary(e) {
   if (e.y < top + margin) {
     if (isCopper(e.cellI, e.cellJ - 1)) {
       e.cellJ--;
-      e.y = top - margin - (top + margin - e.y);
     } else {
       e.y = top + margin + (top + margin - e.y);
       e.vy = -e.vy;
@@ -139,7 +161,6 @@ function handleElectronBoundary(e) {
   if (e.y > bottom - margin) {
     if (isCopper(e.cellI, e.cellJ + 1)) {
       e.cellJ++;
-      e.y = bottom + margin + (e.y - (bottom - margin));
     } else {
       e.y = bottom - margin - (e.y - (bottom - margin));
       e.vy = -e.vy;
@@ -180,24 +201,22 @@ function update(dt) {
 
 // Draw
 function draw() {
-  ctx.fillStyle = '#111';
-  ctx.fillRect(0, 0, w, h);
-
-  // Cell backgrounds (subtle)
+  // Cell backgrounds
   for (let j = 0; j < gridSize; j++) {
     for (let i = 0; i < gridSize; i++) {
       if (grid[j][i] === 'copper') {
-        ctx.fillStyle = '#1a1a2e';
-        ctx.fillRect(i * cellW, j * cellH, cellW, cellH);
+        ctx.fillStyle = '#b87333';
       } else if (grid[j][i] === 'insulator') {
-        ctx.fillStyle = '#16213e';
-        ctx.fillRect(i * cellW, j * cellH, cellW, cellH);
+        ctx.fillStyle = '#ffffff';
+      } else {
+        ctx.fillStyle = '#000000';
       }
+      ctx.fillRect(i * cellW, j * cellH, cellW, cellH);
     }
   }
 
   // Grid lines
-  ctx.strokeStyle = '#333';
+  ctx.strokeStyle = '#444';
   ctx.lineWidth = 1;
   for (let i = 0; i <= gridSize; i++) {
     ctx.beginPath();
