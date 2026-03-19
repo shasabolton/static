@@ -277,7 +277,7 @@ function handleElectronBoundary(e) {
 }
 
 function transferElectronToBody(e, hit) {
-  if (!hit) return;
+  if (!hit || !hit.body) return;
   const { body, cell } = hit;
   e.body = body;
   e.cellI = undefined;
@@ -290,6 +290,7 @@ function transferElectronToBody(e, hit) {
 
 function handleBodyElectronBoundary(e) {
   const body = e.body;
+  if (!body) return;
   const margin = particleRadius;
 
   let bodyLeft = Infinity, bodyRight = -Infinity, bodyTop = Infinity, bodyBottom = -Infinity;
@@ -316,44 +317,44 @@ function handleBodyElectronBoundary(e) {
 
   if (e.x < bodyLeft + margin) {
     const hit = getBodyAtPoint(bodyLeft - 1, e.y);
-    if (hit) transferElectronToBody(e, hit);
-    else {
-      const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'left');
-      if (near) transferElectronToFixed(e, near.ci, near.cj);
-      else { e.x = bodyLeft + margin + (bodyLeft + margin - e.x); e.vx = -e.vx; }
-    }
+    if (hit) { transferElectronToBody(e, hit); return; }
+    const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'left', e.y);
+    if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
+    e.x = bodyLeft + margin + (bodyLeft + margin - e.x);
+    e.vx = -e.vx;
+    return;
   }
   if (e.x > bodyRight - margin) {
     const hit = getBodyAtPoint(bodyRight + 1, e.y);
-    if (hit) transferElectronToBody(e, hit);
-    else {
-      const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'right');
-      if (near) transferElectronToFixed(e, near.ci, near.cj);
-      else { e.x = bodyRight - margin - (e.x - (bodyRight - margin)); e.vx = -e.vx; }
-    }
+    if (hit) { transferElectronToBody(e, hit); return; }
+    const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'right', e.y);
+    if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
+    e.x = bodyRight - margin - (e.x - (bodyRight - margin));
+    e.vx = -e.vx;
+    return;
   }
   if (e.y < bodyTop + margin) {
     const hit = getBodyAtPoint(e.x, bodyTop - 1);
-    if (hit) transferElectronToBody(e, hit);
-    else {
-      const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'top');
-      if (near) transferElectronToFixed(e, near.ci, near.cj);
-      else { e.y = bodyTop + margin + (bodyTop + margin - e.y); e.vy = -e.vy; }
-    }
+    if (hit) { transferElectronToBody(e, hit); return; }
+    const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'top', e.x);
+    if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
+    e.y = bodyTop + margin + (bodyTop + margin - e.y);
+    e.vy = -e.vy;
+    return;
   }
   if (e.y > bodyBottom - margin) {
     const hit = getBodyAtPoint(e.x, bodyBottom + 1);
-    if (hit) transferElectronToBody(e, hit);
-    else {
-      const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'bottom');
-      if (near) transferElectronToFixed(e, near.ci, near.cj);
-      else { e.y = bodyBottom - margin - (e.y - (bodyBottom - margin)); e.vy = -e.vy; }
-    }
+    if (hit) { transferElectronToBody(e, hit); return; }
+    const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'bottom', e.x);
+    if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
+    e.y = bodyBottom - margin - (e.y - (bodyBottom - margin));
+    e.vy = -e.vy;
   }
 }
 
 function transferElectronToFixed(e, ci, cj) {
   if (!isCopperAtGrid(ci, cj)) return;
+  if (!e.body) return;
   e.body.electrons = e.body.electrons.filter(x => x !== e);
   e.body = null;
   e.cellI = ci;
@@ -441,20 +442,31 @@ function getCopperOverlap(body) {
   return bestPush;
 }
 
-function getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, edge) {
-  for (let gi = 0; gi < gridSize; gi++) {
-    for (let gj = 0; gj < gridSize; gj++) {
-      if (!isCopperAtGrid(gi, gj)) continue;
-      const cLeft = gi * cellW, cRight = (gi + 1) * cellW, cTop = gj * cellH, cBottom = (gj + 1) * cellH;
-      let gap = 0;
-      if (edge === 'left') { gap = bodyLeft - cRight; if (gap <= 0 || gap >= transferGap) continue; }
-      else if (edge === 'right') { gap = cLeft - bodyRight; if (gap <= 0 || gap >= transferGap) continue; }
-      else if (edge === 'top') { gap = bodyTop - cBottom; if (gap <= 0 || gap >= transferGap) continue; }
-      else if (edge === 'bottom') { gap = cTop - bodyBottom; if (gap <= 0 || gap >= transferGap) continue; }
-      return { ci: gi, cj: gj };
-    }
+function getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, edge, coord) {
+  let gi, gj;
+  if (edge === 'left') {
+    gi = Math.floor(bodyLeft / cellW) - 1;
+    gj = Math.floor(coord / cellH);
+  } else if (edge === 'right') {
+    gi = Math.floor(bodyRight / cellW);
+    gj = Math.floor(coord / cellH);
+  } else if (edge === 'top') {
+    gi = Math.floor(coord / cellW);
+    gj = Math.floor(bodyTop / cellH) - 1;
+  } else {
+    gi = Math.floor(coord / cellW);
+    gj = Math.floor(bodyBottom / cellH);
   }
-  return null;
+  if (gi < 0 || gi >= gridSize || gj < 0 || gj >= gridSize) return null;
+  if (!isCopperAtGrid(gi, gj)) return null;
+  const cLeft = gi * cellW, cRight = (gi + 1) * cellW, cTop = gj * cellH, cBottom = (gj + 1) * cellH;
+  let gap = 0;
+  if (edge === 'left') { gap = bodyLeft - cRight; }
+  else if (edge === 'right') { gap = cLeft - bodyRight; }
+  else if (edge === 'top') { gap = bodyTop - cBottom; }
+  else { gap = cTop - bodyBottom; }
+  if (gap <= 0 || gap >= transferGap) return null;
+  return { ci: gi, cj: gj };
 }
 
 function getBodyNearFixedCopperEdge(cellLeft, cellRight, cellTop, cellBottom, edge) {
@@ -465,8 +477,7 @@ function getBodyNearFixedCopperEdge(cellLeft, cellRight, cellTop, cellBottom, ed
     else if (edge === 'right') { gap = b.left - cellRight; if (gap <= 0 || gap >= transferGap) continue; }
     else if (edge === 'top') { gap = cellTop - b.bottom; if (gap <= 0 || gap >= transferGap) continue; }
     else if (edge === 'bottom') { gap = b.top - cellBottom; if (gap <= 0 || gap >= transferGap) continue; }
-    const hit = getBodyAtPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
-    return hit;
+    return { body, cell: body.cells[0] };
   }
   return null;
 }
@@ -508,7 +519,7 @@ function update(dt) {
 
   const allElectrons = [...electrons];
   for (const body of freeBodies) {
-    allElectrons.push(...body.electrons);
+    if (body && body.electrons) allElectrons.push(...body.electrons);
   }
 
   for (let i = 0; i < allElectrons.length; i++) {
@@ -687,9 +698,10 @@ function draw() {
     ctx.fill();
   }
   for (const body of freeBodies) {
+    if (!body || !body.electrons) continue;
     for (const e of body.electrons) {
       ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+      ctx.arc(e.x, e.y, e.radius || particleRadius, 0, Math.PI * 2);
       ctx.fillStyle = '#ff4444';
       ctx.fill();
     }
