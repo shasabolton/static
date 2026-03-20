@@ -579,6 +579,7 @@ function update(dt) {
         fy += f.fy;
       }
       for (const e of allElectrons) {
+        if (body.electrons.includes(e)) continue;
         const f = coulombForce(p.x, p.y, p.charge, e.x, e.y, e.charge);
         fx += f.fx;
         fy += f.fy;
