@@ -230,13 +230,8 @@ function coulombForce(ax, ay, aq, bx, by, bq) {
 function wallBounce(e, normalX, normalY) {
   const vn = e.vx * normalX + e.vy * normalY;
   if (vn >= 0) return;
-  if (wallRestitution === 0) {
-    e.vx = 0;
-    e.vy = 0;
-  } else {
-    e.vx -= (1 + wallRestitution) * vn * normalX;
-    e.vy -= (1 + wallRestitution) * vn * normalY;
-  }
+  e.vx -= (1 + wallRestitution) * vn * normalX;
+  e.vy -= (1 + wallRestitution) * vn * normalY;
 }
 
 function handleElectronBoundary(e) {
