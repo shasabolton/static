@@ -593,8 +593,16 @@ function update(dt) {
       if (copperPush) {
         body.centerX += copperPush.pushX;
         body.centerY += copperPush.pushY;
-        body.vx = 0;
-        body.vy = 0;
+        const len = Math.sqrt(copperPush.pushX * copperPush.pushX + copperPush.pushY * copperPush.pushY);
+        if (len > 0.001) {
+          const nx = copperPush.pushX / len;
+          const ny = copperPush.pushY / len;
+          const vn = body.vx * nx + body.vy * ny;
+          if (vn < 0) {
+            body.vx -= vn * nx;
+            body.vy -= vn * ny;
+          }
+        }
         for (const p of body.protons) {
           p.x = body.centerX + p.offsetX;
           p.y = body.centerY + p.offsetY;
