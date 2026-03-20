@@ -240,6 +240,7 @@ function handleElectronBoundary(e) {
     handleBodyElectronBoundary(e);
     return;
   }
+  if (e.cellI == null || e.cellJ == null) return; // invalid fixed electron state
 
   const left = e.cellI * cellW;
   const right = (e.cellI + 1) * cellW;
@@ -300,18 +301,24 @@ function handleElectronBoundary(e) {
 function transferElectronToBody(e, hit) {
   if (!hit || !hit.body || !hit.cell) return;
   const { body, cell } = hit;
+  if (body === e.body) return; // already in this body
+  // Remove from old location (global electrons or previous body)
+  if (e.body && e.body.electrons) {
+    e.body.electrons = e.body.electrons.filter(x => x !== e);
+  } else {
+    electrons = electrons.filter(x => x !== e);
+  }
   e.body = body;
   e.cellI = undefined;
   e.cellJ = undefined;
   e.localCellI = cell.ci;
   e.localCellJ = cell.cj;
   body.electrons.push(e);
-  electrons = electrons.filter(x => x !== e);
 }
 
 function handleBodyElectronBoundary(e) {
   const body = e.body;
-  if (!body) return;
+  if (!body || !body.cells) return;
   const margin = particleRadius;
 
   let bodyLeft = Infinity, bodyRight = -Infinity, bodyTop = Infinity, bodyBottom = -Infinity;
@@ -529,22 +536,25 @@ function getBodyBodyOverlap(bodyA, bodyB) {
 function update(dt) {
   if (!playing) return;
 
-  const allProtons = [...protons];
+  const allProtons = [...protons].filter(Boolean);
   for (const body of freeBodies) {
+    if (!body || !body.protons) continue;
     for (const p of body.protons) {
+      if (!p) continue;
       p.x = body.centerX + p.offsetX;
       p.y = body.centerY + p.offsetY;
       allProtons.push(p);
     }
   }
 
-  const allElectrons = [...electrons];
+  const allElectrons = [...electrons].filter(Boolean);
   for (const body of freeBodies) {
-    if (body && body.electrons) allElectrons.push(...body.electrons);
+    if (body && body.electrons) allElectrons.push(...body.electrons.filter(Boolean));
   }
 
   for (let i = 0; i < allElectrons.length; i++) {
     const e = allElectrons[i];
+    if (!e || typeof e.x !== 'number' || typeof e.y !== 'number') continue;
     let fx = 0, fy = 0;
     for (const p of allProtons) {
       const f = coulombForce(e.x, e.y, e.charge, p.x, p.y, p.charge);
@@ -562,7 +572,14 @@ function update(dt) {
     e.vy += (fy / e.mass) * dt;
     e.x += e.vx * dt;
     e.y += e.vy * dt;
-    handleElectronBoundary(e);
+    try {
+      handleElectronBoundary(e);
+    } catch (err) {
+      console.error('handleElectronBoundary error for electron:', {
+        x: e.x, y: e.y, body: !!e.body, cellI: e.cellI, cellJ: e.cellJ
+      }, err.message);
+      throw err;
+    }
   }
 
   for (const body of freeBodies) {
@@ -590,6 +607,8 @@ function update(dt) {
   for (let iter = 0; iter < 5; iter++) {
     let anyOverlap = false;
     for (const body of freeBodies) {
+      if (!body || !body.cells || !body.protons) continue;
+      try {
       const copperPush = getCopperOverlap(body);
       if (copperPush) {
         body.centerX += copperPush.pushX;
@@ -611,7 +630,7 @@ function update(dt) {
         anyOverlap = true;
       }
       for (const other of freeBodies) {
-        if (body === other) continue;
+        if (!other || !other.protons || body === other) continue;
         const overlap = getBodyBodyOverlap(body, other);
         if (overlap) {
           body.centerX += overlap.pushAX;
@@ -644,11 +663,20 @@ function update(dt) {
           anyOverlap = true;
         }
       }
+      } catch (err) {
+        console.error('Overlap resolution error for body:', {
+          centerX: body?.centerX, centerY: body?.centerY,
+          protons: body?.protons?.length, electrons: body?.electrons?.length,
+          cells: body?.cells?.length
+        }, err.message);
+        throw err;
+      }
     }
     if (!anyOverlap) break;
   }
 
   for (const body of freeBodies) {
+    if (!body || !body.protons) continue;
     let fx = 0, fy = 0;
     for (const p of body.protons) {
       for (const op of allProtons) {
@@ -658,7 +686,7 @@ function update(dt) {
         fy += f.fy;
       }
       for (const e of allElectrons) {
-        if (body.electrons && body.electrons.includes(e)) continue;
+        if (!e || (body.electrons && body.electrons.includes(e))) continue;
         const f = coulombForce(p.x, p.y, p.charge, e.x, e.y, e.charge);
         fx += f.fx;
         fy += f.fy;
@@ -685,6 +713,7 @@ function draw() {
   }
 
   for (const body of freeBodies) {
+    if (!body || !body.cells) continue;
     for (const cell of body.cells) {
       ctx.fillStyle = '#cd7f32';
       ctx.fillRect(body.centerX + cell.offsetX, body.centerY + cell.offsetY, cellW, cellH);
@@ -711,7 +740,9 @@ function draw() {
     ctx.fill();
   }
   for (const body of freeBodies) {
+    if (!body || !body.protons) continue;
     for (const p of body.protons) {
+      if (!p) continue;
       ctx.beginPath();
       ctx.arc(p.x, p.y, particleRadius, 0, Math.PI * 2);
       ctx.fillStyle = '#4488ff';
@@ -755,8 +786,20 @@ function loop(now) {
   if (lastTime === 0) lastTime = now;
   const dt = Math.min((now - lastTime) / 1000, maxDt);
   lastTime = now;
-  update(dt);
-  draw();
+  try {
+    update(dt);
+    draw();
+  } catch (err) {
+    const state = { protons: protons.length, electrons: electrons.length, freeBodies: freeBodies.length,
+      bodies: freeBodies.map(b => ({ protons: b?.protons?.length, electrons: b?.electrons?.length, cells: b?.cells?.length })) };
+    console.error('Simulation error:', err.message, '\nStack:', err.stack, '\nState:', state);
+    const logEl = document.getElementById('errorLog');
+    if (logEl) {
+      logEl.style.display = 'block';
+      logEl.textContent = `Error: ${err.message}\n\nStack:\n${err.stack}\n\nState: ${JSON.stringify(state, null, 2)}`;
+    }
+    throw err;
+  }
   requestAnimationFrame(loop);
 }
 
