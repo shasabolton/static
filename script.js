@@ -12,6 +12,7 @@ const protonMass = 1;
 const coulombK = 5000;
 const softening = 20;
 const maxDt = 0.05;
+const wallRestitution = 1; // 1 = fully elastic (no energy loss)
 
 // State
 let grid = [];
@@ -226,6 +227,13 @@ function coulombForce(ax, ay, aq, bx, by, bq) {
   return { fx: -(f * dx) / rDir, fy: -(f * dy) / rDir };
 }
 
+function elasticWallBounce(e, normalX, normalY) {
+  const vn = e.vx * normalX + e.vy * normalY;
+  if (vn >= 0) return;
+  e.vx -= (1 + wallRestitution) * vn * normalX;
+  e.vy -= (1 + wallRestitution) * vn * normalY;
+}
+
 function handleElectronBoundary(e) {
   if (e.body) {
     handleBodyElectronBoundary(e);
@@ -244,7 +252,10 @@ function handleElectronBoundary(e) {
     } else {
       const hit = getBodyAtPoint(left - 1, e.y) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'left');
       if (hit) transferElectronToBody(e, hit);
-      else { e.x = left + margin + (left + margin - e.x); e.vx = -e.vx; }
+      else {
+        e.x = left + margin + (left + margin - e.x);
+        elasticWallBounce(e, 1, 0);
+      }
     }
   }
   if (e.x > right - margin) {
@@ -253,7 +264,10 @@ function handleElectronBoundary(e) {
     } else {
       const hit = getBodyAtPoint(right + 1, e.y) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'right');
       if (hit) transferElectronToBody(e, hit);
-      else { e.x = right - margin - (e.x - (right - margin)); e.vx = -e.vx; }
+      else {
+        e.x = right - margin - (e.x - (right - margin));
+        elasticWallBounce(e, -1, 0);
+      }
     }
   }
   if (e.y < top + margin) {
@@ -262,7 +276,10 @@ function handleElectronBoundary(e) {
     } else {
       const hit = getBodyAtPoint(e.x, top - 1) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'top');
       if (hit) transferElectronToBody(e, hit);
-      else { e.y = top + margin + (top + margin - e.y); e.vy = -e.vy; }
+      else {
+        e.y = top + margin + (top + margin - e.y);
+        elasticWallBounce(e, 0, 1);
+      }
     }
   }
   if (e.y > bottom - margin) {
@@ -271,7 +288,10 @@ function handleElectronBoundary(e) {
     } else {
       const hit = getBodyAtPoint(e.x, bottom + 1) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'bottom');
       if (hit) transferElectronToBody(e, hit);
-      else { e.y = bottom - margin - (e.y - (bottom - margin)); e.vy = -e.vy; }
+      else {
+        e.y = bottom - margin - (e.y - (bottom - margin));
+        elasticWallBounce(e, 0, -1);
+      }
     }
   }
 }
@@ -321,7 +341,7 @@ function handleBodyElectronBoundary(e) {
     const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'left', e.y);
     if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
     e.x = bodyLeft + margin + (bodyLeft + margin - e.x);
-    e.vx = -e.vx;
+    elasticWallBounce(e, 1, 0);
     return;
   }
   if (e.x > bodyRight - margin) {
@@ -330,7 +350,7 @@ function handleBodyElectronBoundary(e) {
     const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'right', e.y);
     if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
     e.x = bodyRight - margin - (e.x - (bodyRight - margin));
-    e.vx = -e.vx;
+    elasticWallBounce(e, -1, 0);
     return;
   }
   if (e.y < bodyTop + margin) {
@@ -339,7 +359,7 @@ function handleBodyElectronBoundary(e) {
     const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'top', e.x);
     if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
     e.y = bodyTop + margin + (bodyTop + margin - e.y);
-    e.vy = -e.vy;
+    elasticWallBounce(e, 0, 1);
     return;
   }
   if (e.y > bodyBottom - margin) {
@@ -348,7 +368,7 @@ function handleBodyElectronBoundary(e) {
     const near = getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, 'bottom', e.x);
     if (near) { transferElectronToFixed(e, near.ci, near.cj); return; }
     e.y = bodyBottom - margin - (e.y - (bodyBottom - margin));
-    e.vy = -e.vy;
+    elasticWallBounce(e, 0, -1);
   }
 }
 
