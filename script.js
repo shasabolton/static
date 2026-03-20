@@ -53,6 +53,7 @@ function isInsulator(ci, cj) {
 
 function getBodyAtPoint(x, y) {
   for (const body of freeBodies) {
+    if (!body || !body.cells) continue;
     for (const cell of body.cells) {
       const left = body.centerX + cell.offsetX;
       const top = body.centerY + cell.offsetY;
@@ -297,7 +298,7 @@ function handleElectronBoundary(e) {
 }
 
 function transferElectronToBody(e, hit) {
-  if (!hit || !hit.body) return;
+  if (!hit || !hit.body || !hit.cell) return;
   const { body, cell } = hit;
   e.body = body;
   e.cellI = undefined;
@@ -374,7 +375,7 @@ function handleBodyElectronBoundary(e) {
 
 function transferElectronToFixed(e, ci, cj) {
   if (!isCopperAtGrid(ci, cj)) return;
-  if (!e.body) return;
+  if (!e.body || !e.body.electrons) return;
   e.body.electrons = e.body.electrons.filter(x => x !== e);
   e.body = null;
   e.cellI = ci;
@@ -497,7 +498,7 @@ function getBodyNearFixedCopperEdge(cellLeft, cellRight, cellTop, cellBottom, ed
     else if (edge === 'right') { gap = b.left - cellRight; if (gap <= 0 || gap >= transferGap) continue; }
     else if (edge === 'top') { gap = cellTop - b.bottom; if (gap <= 0 || gap >= transferGap) continue; }
     else if (edge === 'bottom') { gap = b.top - cellBottom; if (gap <= 0 || gap >= transferGap) continue; }
-    return { body, cell: body.cells[0] };
+    return { body, cell: body.cells && body.cells[0] };
   }
   return null;
 }
@@ -657,7 +658,7 @@ function update(dt) {
         fy += f.fy;
       }
       for (const e of allElectrons) {
-        if (body.electrons.includes(e)) continue;
+        if (body.electrons && body.electrons.includes(e)) continue;
         const f = coulombForce(p.x, p.y, p.charge, e.x, e.y, e.charge);
         fx += f.fx;
         fy += f.fy;
