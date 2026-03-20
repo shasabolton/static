@@ -570,38 +570,20 @@ function update(dt) {
   }
 
   for (const body of freeBodies) {
-    let fx = 0, fy = 0;
-    for (const p of body.protons) {
-      for (const op of allProtons) {
-        if (body.protons.includes(op)) continue;
-        const f = coulombForce(p.x, p.y, p.charge, op.x, op.y, op.charge);
-        fx += f.fx;
-        fy += f.fy;
-      }
-      for (const e of allElectrons) {
-        if (body.electrons.includes(e)) continue;
-        const f = coulombForce(p.x, p.y, p.charge, e.x, e.y, e.charge);
-        fx += f.fx;
-        fy += f.fy;
-      }
-    }
-
-    body.vx += (fx / body.mass) * dt;
-    body.vy += (fy / body.mass) * dt;
     body.centerX += body.vx * dt;
     body.centerY += body.vy * dt;
 
     if (bodyOverlapsInsulator(body)) {
       body.centerX -= body.vx * dt;
       body.centerY -= body.vy * dt;
-      body.vx = -body.vx;
-      body.vy = -body.vy;
+      body.vx = 0;
+      body.vy = 0;
     }
 
     body.centerX = Math.max(0, Math.min(w, body.centerX));
     body.centerY = Math.max(0, Math.min(h, body.centerY));
-    if (body.centerX <= 0 || body.centerX >= w) body.vx = -body.vx;
-    if (body.centerY <= 0 || body.centerY >= h) body.vy = -body.vy;
+    if (body.centerX <= 0 || body.centerX >= w) { body.vx = 0; }
+    if (body.centerY <= 0 || body.centerY >= h) { body.vy = 0; }
 
     for (const p of body.protons) {
       p.x = body.centerX + p.offsetX;
@@ -616,16 +598,8 @@ function update(dt) {
       if (copperPush) {
         body.centerX += copperPush.pushX;
         body.centerY += copperPush.pushY;
-        const len = Math.sqrt(copperPush.pushX * copperPush.pushX + copperPush.pushY * copperPush.pushY);
-        if (len > 0.001) {
-          const nx = copperPush.pushX / len;
-          const ny = copperPush.pushY / len;
-          const vn = body.vx * nx + body.vy * ny;
-          if (vn < 0) {
-            body.vx -= vn * nx;
-            body.vy -= vn * ny;
-          }
-        }
+        body.vx = 0;
+        body.vy = 0;
         for (const p of body.protons) {
           p.x = body.centerX + p.offsetX;
           p.y = body.centerY + p.offsetY;
@@ -668,6 +642,30 @@ function update(dt) {
       }
     }
     if (!anyOverlap) break;
+  }
+
+  for (const body of freeBodies) {
+    let fx = 0, fy = 0;
+    for (const p of body.protons) {
+      for (const op of allProtons) {
+        if (body.protons.includes(op)) continue;
+        const f = coulombForce(p.x, p.y, p.charge, op.x, op.y, op.charge);
+        fx += f.fx;
+        fy += f.fy;
+      }
+      for (const e of allElectrons) {
+        if (body.electrons.includes(e)) continue;
+        const f = coulombForce(p.x, p.y, p.charge, e.x, e.y, e.charge);
+        fx += f.fx;
+        fy += f.fy;
+      }
+    }
+    body.vx += (fx / body.mass) * dt;
+    body.vy += (fy / body.mass) * dt;
+    for (const p of body.protons) {
+      p.x = body.centerX + p.offsetX;
+      p.y = body.centerY + p.offsetY;
+    }
   }
 }
 
