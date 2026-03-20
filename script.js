@@ -250,32 +250,48 @@ function handleElectronBoundary(e) {
     if (isCopperAtGrid(e.cellI - 1, e.cellJ)) {
       e.cellI--;
     } else {
-      e.x = left + margin + (left + margin - e.x);
-      wallBounce(e, 1, 0);
+      const hit = getBodyAtPoint(left - 1, e.y) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'left');
+      if (hit) transferElectronToBody(e, hit);
+      else {
+        e.x = left + margin + (left + margin - e.x);
+        wallBounce(e, 1, 0);
+      }
     }
   }
   if (e.x > right - margin) {
     if (isCopperAtGrid(e.cellI + 1, e.cellJ)) {
       e.cellI++;
     } else {
-      e.x = right - margin - (e.x - (right - margin));
-      wallBounce(e, -1, 0);
+      const hit = getBodyAtPoint(right + 1, e.y) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'right');
+      if (hit) transferElectronToBody(e, hit);
+      else {
+        e.x = right - margin - (e.x - (right - margin));
+        wallBounce(e, -1, 0);
+      }
     }
   }
   if (e.y < top + margin) {
     if (isCopperAtGrid(e.cellI, e.cellJ - 1)) {
       e.cellJ--;
     } else {
-      e.y = top + margin + (top + margin - e.y);
-      wallBounce(e, 0, 1);
+      const hit = getBodyAtPoint(e.x, top - 1) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'top');
+      if (hit) transferElectronToBody(e, hit);
+      else {
+        e.y = top + margin + (top + margin - e.y);
+        wallBounce(e, 0, 1);
+      }
     }
   }
   if (e.y > bottom - margin) {
     if (isCopperAtGrid(e.cellI, e.cellJ + 1)) {
       e.cellJ++;
     } else {
-      e.y = bottom - margin - (e.y - (bottom - margin));
-      wallBounce(e, 0, -1);
+      const hit = getBodyAtPoint(e.x, bottom + 1) || getBodyNearFixedCopperEdge(left, right, top, bottom, 'bottom');
+      if (hit) transferElectronToBody(e, hit);
+      else {
+        e.y = bottom - margin - (e.y - (bottom - margin));
+        wallBounce(e, 0, -1);
+      }
     }
   }
 }
@@ -471,6 +487,19 @@ function getFixedCopperNearEdge(bodyLeft, bodyRight, bodyTop, bodyBottom, edge, 
   else { gap = cTop - bodyBottom; }
   if (gap <= 0 || gap >= transferGap) return null;
   return { ci: gi, cj: gj };
+}
+
+function getBodyNearFixedCopperEdge(cellLeft, cellRight, cellTop, cellBottom, edge) {
+  for (const body of freeBodies) {
+    const b = getBodyAABB(body);
+    let gap = 0;
+    if (edge === 'left') { gap = cellLeft - b.right; if (gap <= 0 || gap >= transferGap) continue; }
+    else if (edge === 'right') { gap = b.left - cellRight; if (gap <= 0 || gap >= transferGap) continue; }
+    else if (edge === 'top') { gap = cellTop - b.bottom; if (gap <= 0 || gap >= transferGap) continue; }
+    else if (edge === 'bottom') { gap = b.top - cellBottom; if (gap <= 0 || gap >= transferGap) continue; }
+    return { body, cell: body.cells[0] };
+  }
+  return null;
 }
 
 function getBodyBodyOverlap(bodyA, bodyB) {
